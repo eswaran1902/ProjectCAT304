@@ -1,0 +1,36 @@
+/* src/components/AdminDashboard.css */
+
+.admin-wrapper {
+  @apply min-h-screen flex bg-[#F8FAFC] font-sans text-slate-900;
+}
+
+/* Sidebar Styling */
+.admin-sidebar {
+  @apply w-64 bg-slate-900 min-h-screen text-white p-6 hidden md:block border-r border-slate-800 shadow-2xl;
+}
+
+.nav-item {
+  @apply p-3 rounded-xl cursor-pointer transition-all duration-200 font-medium text-slate-400 hover:bg-slate-800 hover:text-white;
+}
+
+.nav-item-active {
+  @apply bg-indigo-600 text-white shadow-lg shadow-indigo-900/20 font-bold;
+}
+
+/* Card & Panel Styling */
+.admin-stat-card {
+  @apply p-6 rounded-3xl shadow-sm text-white transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-default;
+}
+
+.action-panel-card {
+  @apply p-6 rounded-3xl shadow-sm border transition-all duration-300;
+}
+
+.admin-btn {
+  @apply mt-5 w-full py-3 px-4 text-sm font-bold rounded-2xl transition-all active:scale-95 shadow-md;
+}
+
+/* Container for AI Insights */
+.insights-container {
+  @apply mt-12 bg-white shadow-sm border border-slate-100 rounded-[2rem] overflow-hidden;
+}
