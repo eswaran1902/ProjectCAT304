@@ -15,7 +15,7 @@ const Navbar = ({ setView, currentView }) => {
           onClick={() => setView('home')} 
           className="text-xl font-black cursor-pointer tracking-tighter"
         >
-          SYSTEM<span className="text-indigo-600">OS</span>
+          AP<span className="text-indigo-600">SR</span>
         </div>
         
         <div className="flex gap-2">

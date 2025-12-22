@@ -7,35 +7,38 @@ import Promotions from './components/Promotion';
 import Marketplace from './components/Marketplace';
 
 const App = () => {
-  // state can be: 'home', 'sales', or 'admin'
   const [currentView, setCurrentView] = useState('home');
 
-  // Function to determine which page to display
-  const renderContent = () => {
+  // STARTING EMPTY: Removed the pre-defined Gyoza and Sauce
+  const [sharedProducts, setSharedProducts] = useState([]);
+
+  // NEW: Function to remove an item from the global state
+  const deleteProduct = (id) => {
+    setSharedProducts(sharedProducts.filter(product => product.id !== id));
+  };
+
+  const renderView = () => {
     switch(currentView) {
-      case 'sales':
-        return <SalespersonDashboard />;
-      case 'admin':
-        return <AdminDashboard />;
-      case 'promotions':
-        return <Promotions />;
-        // Inside your switch statement in App.js
-      case 'marketplace':
-        return <Marketplace />;   
-      default:
-        return <Home setView={setCurrentView} />;
+      case 'marketplace': 
+        return <Marketplace products={sharedProducts} />;
+      case 'promotions': 
+        return (
+          <Promotions 
+            products={sharedProducts} 
+            setProducts={setSharedProducts} 
+            deleteProduct={deleteProduct} 
+          />
+        );
+      case 'sales': return <SalespersonDashboard />;
+      case 'admin': return <AdminDashboard />;
+      default: return <Home setView={setCurrentView} />;
     }
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      {/* We pass setView to the Navbar so buttons can change the page */}
       <Navbar setView={setCurrentView} currentView={currentView} />
-      
-      {/* The main content area */}
-      <main className="transition-all duration-500">
-        {renderContent()}
-      </main>
+      {renderView()}
     </div>
   );
 };
