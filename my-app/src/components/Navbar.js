@@ -22,6 +22,8 @@ const Navbar = ({ setView, currentView }) => {
           <button onClick={() => setView('home')} className={getBtnClass('home')}>Home</button>
           <button onClick={() => setView('sales')} className={getBtnClass('sales')}>Partner Portal</button>
           <button onClick={() => setView('admin')} className={getBtnClass('admin')}>Admin Center</button>
+          <button onClick={() => setView('promotions')} className={getBtnClass('promotions')}>My Store</button>
+          <button onClick={() => setView('marketplace')} className={getBtnClass('marketplace')}>Marketplace</button>
         </div>
       </div>
     </nav>

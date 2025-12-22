@@ -3,6 +3,8 @@ import Navbar from './components/Navbar';
 import Home from './components/Home';
 import SalespersonDashboard from './components/SalespersonDashboard';
 import AdminDashboard from './components/AdminDashboard';
+import Promotions from './components/Promotion';
+import Marketplace from './components/Marketplace';
 
 const App = () => {
   // state can be: 'home', 'sales', or 'admin'
@@ -15,6 +17,11 @@ const App = () => {
         return <SalespersonDashboard />;
       case 'admin':
         return <AdminDashboard />;
+      case 'promotions':
+        return <Promotions />;
+        // Inside your switch statement in App.js
+      case 'marketplace':
+        return <Marketplace />;   
       default:
         return <Home setView={setCurrentView} />;
     }
