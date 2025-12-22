@@ -72,14 +72,16 @@ const AdminDashboard = () => {
         <main className="flex-1 max-w-7xl mx-auto py-10 px-6 lg:px-10 w-full">
           
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricCard title="Pending Payouts" value={`$${data.totalPendingPayouts}`} colorClass="bg-slate-900" />
+            {/* Updated Pending Payouts to RM */}
+            <MetricCard title="Pending Payouts" value={`RM${data.totalPendingPayouts.toFixed(2)}`} colorClass="bg-slate-900" />
             <MetricCard title="Unreconciled" value={`${data.unreconciledMarketplaceReports} Files`} colorClass="bg-indigo-600" />
             <MetricCard title="Risk Alerts" value={`${data.fraudAlerts} New`} colorClass="bg-rose-600" />
             <MetricCard title="AI Strategy" value={data.predictiveSKU} colorClass="bg-emerald-600" />
           </div>
 
           <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <ActionPanel title="Payouts Ready" value={`$${data.totalPendingPayouts}`} buttonText="Batch Process" />
+            {/* Updated Payouts Ready to RM */}
+            <ActionPanel title="Payouts Ready" value={`RM${data.totalPendingPayouts.toFixed(2)}`} buttonText="Batch Process" />
             <ActionPanel title="Marketplace Sync" value={`${data.unreconciledMarketplaceReports} Reports`} buttonText="Reconcile Now" isAlert={true} />
             <ActionPanel title="Risk Queue" value={`${data.fraudAlerts + 1} Pending`} buttonText="Manage Queue" />
           </div>
