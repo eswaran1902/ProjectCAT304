@@ -1,10 +1,58 @@
-import React from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import SalespersonLayout from '../components/layouts/SalespersonLayout';
 import { TrendingUp, DollarSign, MousePointer, CreditCard, ChevronRight, Copy, ExternalLink, ArrowUpRight } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import axios from 'axios';
+import AuthContext from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 
 const SalespersonDashboard = () => {
-    // Mock Data
+    const { token } = useContext(AuthContext);
+    const socket = useSocket();
+    const [stats, setStats] = useState({
+        total: 0,
+        pending: 0,
+        paid: 0,
+        clicks: 0,
+        referralCode: ''
+    });
+
+    const fetchStats = async () => {
+        try {
+            const res = await axios.get('http://localhost:5001/api/dashboard/salesperson/stats', {
+                headers: { 'x-auth-token': token }
+            });
+            setStats(res.data);
+        } catch (err) {
+            console.error("Error fetching dashboard stats:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (token) fetchStats();
+    }, [token]);
+
+    // Real-time listener
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleUpdate = () => {
+            console.log("Real-time update received!");
+            fetchStats();
+        };
+
+        socket.on('stats_updated', handleUpdate);
+        socket.on('order_created', handleUpdate);
+        socket.on('order_updated', handleUpdate);
+
+        return () => {
+            socket.off('stats_updated', handleUpdate);
+            socket.off('order_created', handleUpdate);
+            socket.off('order_updated', handleUpdate);
+        };
+    }, [socket, token]);
+
+    // Mock Data for Chart (Trend) - Keeping as requested
     const data = [
         { name: 'Mon', sales: 400 },
         { name: 'Tue', sales: 300 },
@@ -33,10 +81,10 @@ const SalespersonDashboard = () => {
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between h-32 relative overflow-hidden">
                     <div>
                         <p className="text-sm font-medium text-gray-500 mb-1">Total Earnings</p>
-                        <h3 className="text-2xl font-bold text-gray-900">RM 12,450.00</h3>
+                        <h3 className="text-2xl font-bold text-gray-900">RM {stats.total.toFixed(2)}</h3>
                     </div>
                     <div className="text-sm text-green-600 flex items-center font-medium">
-                        <TrendingUp size={16} className="mr-1" /> +12% this month
+                        <TrendingUp size={16} className="mr-1" /> Lifetime
                     </div>
                     <div className="absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-green-50 to-transparent"></div>
                 </div>
@@ -44,7 +92,7 @@ const SalespersonDashboard = () => {
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between h-32 relative overflow-hidden">
                     <div>
                         <p className="text-sm font-medium text-gray-500 mb-1">Available for Payout</p>
-                        <h3 className="text-2xl font-bold text-gray-900">RM 1,250.00</h3>
+                        <h3 className="text-2xl font-bold text-gray-900">RM {stats.pending.toFixed(2)}</h3>
                     </div>
                     <div className="text-sm text-teal-600 flex items-center font-medium cursor-pointer hover:underline">
                         Request Payout <ChevronRight size={14} />
@@ -55,7 +103,7 @@ const SalespersonDashboard = () => {
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
                     <div>
                         <p className="text-sm font-medium text-gray-500 mb-1">Total Clicks</p>
-                        <h3 className="text-2xl font-bold text-gray-900">8,432</h3>
+                        <h3 className="text-2xl font-bold text-gray-900">{stats.clicks}</h3>
                     </div>
                     <div className="text-sm text-gray-400 flex items-center font-medium">
                         <MousePointer size={14} className="mr-1" /> Across all links
@@ -65,10 +113,12 @@ const SalespersonDashboard = () => {
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
                     <div>
                         <p className="text-sm font-medium text-gray-500 mb-1">Conversion Rate</p>
-                        <h3 className="text-2xl font-bold text-gray-900">2.4%</h3>
+                        <h3 className="text-2xl font-bold text-gray-900">
+                            {stats.clicks > 0 ? ((stats.total > 0 ? 1 : 0) / stats.clicks * 100).toFixed(1) : 0}%
+                        </h3>
                     </div>
                     <div className="text-sm text-gray-400 flex items-center font-medium">
-                        Avg. industry: 1.8%
+                        Est. based on clicks
                     </div>
                 </div>
             </div>

@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { MongoMemoryServer } = require('mongodb-memory-server');
+const fs = require('fs');
+const path = require('path');
 const bcrypt = require('bcryptjs');
 
 const authRoutes = require('./routes/auth');
@@ -15,11 +17,37 @@ const Product = require('./models/Product');
 
 dotenv.config();
 
+const http = require('http');
+const { Server } = require('socket.io');
+
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "http://localhost:3000", // Allow frontend
+        methods: ["GET", "POST", "PUT", "DELETE"]
+    }
+});
+
 const PORT = process.env.PORT || 5001;
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Make io accessible in routes
+app.use((req, res, next) => {
+    req.io = io;
+    next();
+});
+
+// Socket.io Connection
+io.on('connection', (socket) => {
+    console.log('New client connected:', socket.id);
+    socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+    });
+});
 
 const seedDatabase = async () => {
     try {
@@ -70,17 +98,28 @@ app.get('/seed', async (req, res) => {
 });
 
 // Database Connection
+// Database Connection
 const connectDB = async () => {
     try {
-        let mongoUri = process.env.MONGODB_URI;
-        if (!mongoUri || mongoUri.includes('localhost')) {
-            console.log('Local MongoDB not found or default used. Starting in-memory MongoDB...');
-            const mongod = await MongoMemoryServer.create();
-            mongoUri = mongod.getUri();
-            console.log('In-memory MongoDB started at', mongoUri);
+        const dbPath = path.join(__dirname, 'apsr-local-db');
+        if (!fs.existsSync(dbPath)) {
+            fs.mkdirSync(dbPath, { recursive: true });
         }
+
+        console.log('Forcing In-Memory MongoDB with Persistence...');
+        const mongod = await MongoMemoryServer.create({
+            instance: {
+                dbPath: dbPath,
+                storageEngine: 'wiredTiger'
+            }
+        });
+
+        const mongoUri = mongod.getUri();
+        console.log('Local MongoDB started at', mongoUri);
+        console.log('Data persisting to:', dbPath);
+
         await mongoose.connect(mongoUri);
-        console.log('MongoDB connected');
+        console.log('MongoDB connected (Local Persistent)');
         await seedDatabase();
     } catch (err) {
         console.error('MongoDB connection error:', err);
@@ -92,10 +131,17 @@ app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/payouts', require('./routes/payouts'));
+app.use('/api/ai', require('./routes/aiRoutes'));
+app.use('/api/disputes', require('./routes/disputes'));
+app.use('/api/audit', require('./routes/audit'));
+app.use('/api/audit', require('./routes/audit'));
+app.use('/api/settings', require('./routes/settings'));
+app.use('/api/faq', require('./routes/faqRoutes'));
 
 // Connect to DB
 connectDB();
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

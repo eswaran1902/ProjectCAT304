@@ -1,23 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { AlertTriangle, CheckCircle, Clock, Search, Filter, ArrowRight, UserPlus, XCircle } from 'lucide-react';
+import axios from 'axios';
+import AuthContext from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 
 const AttributionPage = () => {
+    const { token } = useContext(AuthContext);
+    const socket = useSocket();
     const [activeTab, setActiveTab] = useState('audit'); // 'audit' or 'mismatch'
     const [selectedTx, setSelectedTx] = useState(null);
+    const [auditQueue, setAuditQueue] = useState([]);
+    const [mismatchQueue, setMismatchQueue] = useState([]);
 
-    // Mock Data - Audit Queue (Standard)
-    const auditQueue = [
-        { id: 'ORD-7721', sales: 'John Sales', source: 'Link Click', risk: 12, amount: 450, time: '10:42 AM', device: 'Mobile', confidence: 'High' },
-        { id: 'ORD-7725', sales: 'Mike D.', source: 'Link Click', risk: 8, amount: 890, time: '03:10 PM', device: 'Desktop', confidence: 'High' },
-    ];
+    const fetchData = async () => {
+        try {
+            const res = await axios.get('http://localhost:5001/api/dashboard/admin/attribution', {
+                headers: { 'x-auth-token': token }
+            });
+            setAuditQueue(res.data.auditQueue);
+            setMismatchQueue(res.data.mismatchQueue);
+        } catch (err) {
+            console.error("Error fetching attribution data:", err);
+        }
+    };
 
-    // Mock Data - Mismatch/Exception Queue
-    const mismatchQueue = [
-        { id: 'ORD-7799', reason: 'Unmatched', desc: 'No salesperson cookie found', amount: 120, time: '09:15 AM' },
-        { id: 'ORD-7801', reason: 'Duplicate Claim', desc: 'Claimed by John Sales & Sarah K.', amount: 2100, time: '11:20 AM' },
-        { id: 'ORD-7805', reason: 'Suspicious', desc: 'High velocity (3s from click to buy)', amount: 550, time: '01:45 PM' },
-    ];
+    useEffect(() => {
+        if (token) fetchData();
+    }, [token]);
+
+    // Real-time listener
+    useEffect(() => {
+        if (!socket) return;
+        const handleUpdate = () => {
+            console.log("Real-time update: Attribution data refreshed");
+            fetchData();
+        };
+
+        // Transactions update when orders are created or verified
+        socket.on('order_created', handleUpdate);
+        socket.on('order_updated', handleUpdate);
+        socket.on('stats_updated', handleUpdate);
+
+        return () => {
+            socket.off('order_created', handleUpdate);
+            socket.off('order_updated', handleUpdate);
+            socket.off('stats_updated', handleUpdate);
+        };
+    }, [socket, token]);
 
     return (
         <AdminLayout>
@@ -38,7 +68,7 @@ const AttributionPage = () => {
                         className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${activeTab === 'mismatch' ? 'bg-amber-50 text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                     >
                         Mismatch Queue
-                        <span className="bg-amber-100 text-amber-800 text-xs px-1.5 py-0.5 rounded-full">3</span>
+                        <span className="bg-amber-100 text-amber-800 text-xs px-1.5 py-0.5 rounded-full">{mismatchQueue.length}</span>
                     </button>
                 </div>
             </div>
@@ -61,17 +91,19 @@ const AttributionPage = () => {
                             <ul className="divide-y divide-gray-100">
                                 {auditQueue.map(tx => (
                                     <li
-                                        key={tx.id}
+                                        key={tx._id}
                                         onClick={() => setSelectedTx(tx)}
-                                        className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${selectedTx?.id === tx.id ? 'bg-teal-50 border-l-4 border-teal-500' : ''}`}
+                                        className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${selectedTx?._id === tx._id ? 'bg-teal-50 border-l-4 border-teal-500' : ''}`}
                                     >
                                         <div className="flex justify-between mb-1">
-                                            <span className="font-bold text-gray-800 text-sm">{tx.id}</span>
-                                            <span className="text-xs text-gray-400">{tx.time}</span>
+                                            <span className="font-bold text-gray-800 text-sm">{tx.orderId}</span>
+                                            <span className="text-xs text-gray-400">{new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                         </div>
                                         <div className="flex justify-between items-center text-sm">
-                                            <span className="text-gray-600 truncate">{tx.sales}</span>
-                                            <span className="text-green-600 text-xs font-bold bg-green-50 px-2 py-0.5 rounded-full">Score: 98</span>
+                                            <span className="text-gray-600 truncate">{tx.salesperson?.name || 'Unassigned'}</span>
+                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${tx.riskScore > 50 ? 'bg-amber-50 text-amber-600' : 'bg-green-50 text-green-600'}`}>
+                                                Risk: {tx.riskScore}
+                                            </span>
                                         </div>
                                     </li>
                                 ))}
@@ -80,19 +112,19 @@ const AttributionPage = () => {
                             <ul className="divide-y divide-gray-100">
                                 {mismatchQueue.map(tx => (
                                     <li
-                                        key={tx.id}
-                                        onClick={() => setSelectedTx({ ...tx, type: 'mismatch' })}
-                                        className={`p-4 cursor-pointer hover:bg-amber-50/30 transition-colors ${selectedTx?.id === tx.id ? 'bg-amber-50 border-l-4 border-amber-500' : ''}`}
+                                        key={tx._id}
+                                        onClick={() => setSelectedTx({ ...tx, type: 'mismatch', reason: 'Risk Flags', desc: 'High risk transaction detected' })}
+                                        className={`p-4 cursor-pointer hover:bg-amber-50/30 transition-colors ${selectedTx?._id === tx._id ? 'bg-amber-50 border-l-4 border-amber-500' : ''}`}
                                     >
                                         <div className="flex justify-between mb-1">
                                             <span className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
                                                 <AlertTriangle size={12} className="text-amber-500" />
-                                                {tx.id}
+                                                {tx.orderId}
                                             </span>
-                                            <span className="text-xs text-gray-400">{tx.time}</span>
+                                            <span className="text-xs text-gray-400">{new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                         </div>
-                                        <div className="text-xs text-amber-700 font-medium mb-1">{tx.reason}</div>
-                                        <div className="text-xs text-gray-500 truncate">{tx.desc}</div>
+                                        <div className="text-xs text-amber-700 font-medium mb-1">Risk Score: {tx.riskScore}</div>
+                                        <div className="text-xs text-gray-500 truncate">{tx.customerName}</div>
                                     </li>
                                 ))}
                             </ul>

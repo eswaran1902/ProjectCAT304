@@ -1,25 +1,42 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { DollarSign, CheckCircle, Clock, AlertCircle, Play, FileText, RefreshCw, XCircle } from 'lucide-react';
+import axios from 'axios';
+import AuthContext from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 
 const PayoutsPage = () => {
-    const [activeTab, setActiveTab] = useState('payable'); // 'payable' or 'history'
+    const { token } = useContext(AuthContext);
+    const socket = useSocket();
+    const [activeTab, setActiveTab] = useState('payable'); // 'payable', 'processing', 'history'
     const [selectedIds, setSelectedIds] = useState([]);
+    const [requests, setRequests] = useState([]);
 
-    // Mock Data - Payable Balances
-    const payableList = [
-        { id: 'SP-001', name: 'Ahmad Rozali', method: 'Bank Transfer (**** 8829)', amount: 1250.00, status: 'Ready' },
-        { id: 'SP-002', name: 'Sarah Jay', method: 'PayPal (sarah@...)', amount: 840.50, status: 'Ready' },
-        { id: 'SP-004', name: 'Jessica Pearson', method: 'Bank Transfer (**** 1122)', amount: 3420.00, status: 'Ready' },
-        { id: 'SP-005', name: 'Louis Litt', method: 'N/A', amount: 450.00, status: 'Missing Details' },
-    ];
+    const fetchRequests = async () => {
+        try {
+            const res = await axios.get('http://localhost:5001/api/payouts', {
+                headers: { 'x-auth-token': token }
+            });
+            setRequests(res.data);
+        } catch (err) {
+            console.error(err);
+        }
+    };
 
-    // Mock Data - Batch History
-    const batchHistory = [
-        { id: 'BATCH-204', date: 'Oct 24, 2024', recipients: 12, total: 14500.00, status: 'Processing', progress: 65 },
-        { id: 'BATCH-203', date: 'Oct 15, 2024', recipients: 45, total: 42100.00, status: 'Paid', progress: 100 },
-        { id: 'BATCH-202', date: 'Oct 01, 2024', recipients: 38, total: 38000.00, status: 'Failed', progress: 0, error: 'Gateway Timeout' },
-    ];
+    useEffect(() => {
+        if (token) fetchRequests();
+    }, [token]);
+
+    // Real-time listener
+    useEffect(() => {
+        if (!socket) return;
+        const handleUpdate = () => {
+            console.log("Real-time update: Payouts refreshed");
+            fetchRequests();
+        };
+        socket.on('stats_updated', handleUpdate);
+        return () => socket.off('stats_updated', handleUpdate);
+    }, [socket, token]);
 
     const handleSelect = (id) => {
         if (selectedIds.includes(id)) {
@@ -29,13 +46,74 @@ const PayoutsPage = () => {
         }
     };
 
+    const handleProcessBatch = async () => {
+        if (selectedIds.length === 0) return;
+        try {
+            await axios.post('http://localhost:5001/api/payouts/batch', { ids: selectedIds }, {
+                headers: { 'x-auth-token': token }
+            });
+            setSelectedIds([]);
+            fetchRequests();
+            setActiveTab('processing'); // Auto-switch to processing tab
+            alert("Batch processed successfully! Moved to Processing tab.");
+        } catch (err) {
+            console.error(err);
+            alert("Failed to process batch");
+        }
+    };
 
+    const handleUpdateStatus = async (id, status) => {
+        if (!window.confirm(`Are you sure you want to ${status} this request?`)) return;
+        try {
+            // If status is 'approved', backend maps it to 'paid' usually for simplified flow,
+            // or we might want specific 'approved' -> 'paid' step.
+            // For this user request "approve and reject", let's map 'approved' to 'paid' 
+            // if that's what the batch does, OR keep 'approved' if there is a 2-step flow.
+            // Looking at batch: { $set: { status: 'paid' ... } }.
+            // So "Approve" effectively means "Pay" in this simple system?
+            // User asked "approve and reject".
+            // Let's send 'paid' if approved, 'rejected' if rejected.
+
+            const finalStatus = status === 'approved' ? 'paid' : 'rejected';
+
+            await axios.put(`http://localhost:5001/api/payouts/${id}/status`, { status: finalStatus }, {
+                headers: { 'x-auth-token': token }
+            });
+            fetchRequests();
+        } catch (err) {
+            console.error(err);
+            alert("Action failed");
+        }
+    };
+
+    // Filter Logic
+    const payableList = requests.filter(r => r.status === 'pending');
+    const processingList = requests.filter(r => r.status === 'processing');
+    const historyList = requests.filter(r => r.status === 'paid' || r.status === 'rejected');
+
+    // Stats
+    const totalPayable = payableList.reduce((acc, curr) => acc + curr.amount, 0);
+    const totalPaid = historyList.filter(r => r.status === 'paid').reduce((acc, curr) => acc + curr.amount, 0);
+
+    // Group history by date for pseudo-batch view
+    const batchHistory = historyList.reduce((acc, curr) => {
+        const dateKey = new Date(curr.updatedAt).toLocaleDateString();
+        if (!acc[dateKey]) {
+            acc[dateKey] = { id: 'BATCH-' + dateKey.replace(/\//g, ''), date: dateKey, recipients: 0, total: 0, status: 'Completed', items: [] };
+        }
+        acc[dateKey].recipients += 1;
+        acc[dateKey].total += curr.amount;
+        acc[dateKey].items.push(curr);
+        return acc;
+    }, {});
+    const batchList = Object.values(batchHistory);
 
     const getStatusColor = (status) => {
         switch (status) {
-            case 'Paid': return 'bg-green-100 text-green-800';
-            case 'Processing': return 'bg-blue-100 text-blue-800';
-            case 'Failed': return 'bg-red-100 text-red-800';
+            case 'paid': return 'bg-green-100 text-green-800';
+            case 'processing': return 'bg-blue-100 text-blue-800';
+            case 'approved': return 'bg-blue-100 text-blue-800';
+            case 'rejected': return 'bg-red-100 text-red-800';
             default: return 'bg-gray-100 text-gray-800';
         }
     };
@@ -56,10 +134,16 @@ const PayoutsPage = () => {
                             Payable ({payableList.length})
                         </button>
                         <button
+                            onClick={() => setActiveTab('processing')}
+                            className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'processing' ? 'bg-teal-50 text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                        >
+                            Processing ({processingList.length})
+                        </button>
+                        <button
                             onClick={() => setActiveTab('history')}
                             className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'history' ? 'bg-teal-50 text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                         >
-                            Batch History
+                            History
                         </button>
                     </div>
                 </div>
@@ -69,18 +153,13 @@ const PayoutsPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-sm font-medium text-gray-500 uppercase">Total Payable</p>
-                    <h3 className="text-3xl font-bold text-gray-900 mt-1">RM 5,960.50</h3>
-                    <p className="text-xs text-amber-600 mt-2 font-medium">Coming due next Friday</p>
+                    <h3 className="text-3xl font-bold text-gray-900 mt-1">RM {totalPayable.toLocaleString()}</h3>
+                    <p className="text-xs text-amber-600 mt-2 font-medium">Pending Requests</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <p className="text-sm font-medium text-gray-500 uppercase">Pending Processing</p>
-                    <h3 className="text-3xl font-bold text-blue-600 mt-1">RM 14,500.00</h3>
-                    <p className="text-xs text-gray-400 mt-2">Batch #204 in progress</p>
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <p className="text-sm font-medium text-gray-500 uppercase">Last Payout</p>
-                    <h3 className="text-3xl font-bold text-green-600 mt-1">RM 42,100.00</h3>
-                    <p className="text-xs text-gray-400 mt-2">Paid on Oct 15</p>
+                    <p className="text-sm font-medium text-gray-500 uppercase">Total Settled</p>
+                    <h3 className="text-3xl font-bold text-green-600 mt-1">RM {totalPaid.toLocaleString()}</h3>
+                    <p className="text-xs text-gray-400 mt-2">Lifetime Payouts</p>
                 </div>
             </div>
 
@@ -91,9 +170,10 @@ const PayoutsPage = () => {
                         <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                             <div>
                                 <h3 className="font-bold text-gray-900">Pending Balances</h3>
-                                <p className="text-xs text-gray-500">Select users to create a payout batch.</p>
+                                <p className="text-xs text-gray-500">Select users to mark as PAID.</p>
                             </div>
                             <button
+                                onClick={handleProcessBatch}
                                 disabled={selectedIds.length === 0}
                                 className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors ${selectedIds.length > 0 ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                             >
@@ -111,52 +191,122 @@ const PayoutsPage = () => {
                                     <th className="px-6 py-4">Payout Method</th>
                                     <th className="px-6 py-4">Status</th>
                                     <th className="px-6 py-4 text-right">Amount</th>
+                                    <th className="px-6 py-4 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 text-sm">
                                 {payableList.map(item => (
-                                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                                    <tr key={item._id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-6 py-4">
                                             <input
                                                 type="checkbox"
-                                                checked={selectedIds.includes(item.id)}
-                                                onChange={() => handleSelect(item.id)}
+                                                checked={selectedIds.includes(item._id)}
+                                                onChange={() => handleSelect(item._id)}
                                                 className="rounded text-teal-600 focus:ring-teal-500"
-                                                disabled={item.status !== 'Ready'}
                                             />
                                         </td>
                                         <td className="px-6 py-4 font-medium text-gray-900">
-                                            {item.name}
-                                            <div className="text-xs text-gray-400">{item.id}</div>
+                                            {item.salesperson?.name || 'Unknown'}
+                                            <div className="text-xs text-gray-400">{item._id.substring(0, 8)}...</div>
                                         </td>
-                                        <td className="px-6 py-4 text-gray-600">{item.method}</td>
+                                        <td className="px-6 py-4 text-gray-600">
+                                            {item.salesperson?.bankDetails || 'No Bank Info (Check Profile)'}
+                                        </td>
                                         <td className="px-6 py-4">
-                                            {item.status === 'Ready' ? (
-                                                <span className="inline-flex items-center text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                                                    Ready
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                                                    <AlertCircle size={10} className="mr-1" /> Missing Info
-                                                </span>
-                                            )}
+                                            <span className={`inline-flex items-center text-xs font-bold px-2 py-0.5 rounded-full ${getStatusColor(item.status)}`}>
+                                                {item.status.toUpperCase()}
+                                            </span>
                                         </td>
                                         <td className="px-6 py-4 text-right font-bold text-gray-900">RM {item.amount.toFixed(2)}</td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button
+                                                    onClick={() => handleUpdateStatus(item._id, 'approved')}
+                                                    className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                                    title="Approve (Mark as Paid)"
+                                                >
+                                                    <CheckCircle size={18} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleUpdateStatus(item._id, 'rejected')}
+                                                    className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                                    title="Reject Request"
+                                                >
+                                                    <XCircle size={18} />
+                                                </button>
+                                            </div>
+                                        </td>
                                     </tr>
                                 ))}
+                                {payableList.length === 0 && (
+                                    <tr>
+                                        <td colSpan="5" className="px-6 py-8 text-center text-gray-400">No pending payouts via requests.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </>
+                ) : activeTab === 'processing' ? (
+                    <>
+                        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-blue-50">
+                            <div>
+                                <h3 className="font-bold text-gray-900">Processing Payments</h3>
+                                <p className="text-xs text-gray-500">View bank details and mark as completed once paid.</p>
+                            </div>
+                        </div>
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 text-xs uppercase text-gray-500 font-semibold">
+                                <tr>
+                                    <th className="px-6 py-4">Salesperson</th>
+                                    <th className="px-6 py-4">Bank Details</th>
+                                    <th className="px-6 py-4">Amount</th>
+                                    <th className="px-6 py-4 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 text-sm">
+                                {processingList.map(item => (
+                                    <tr key={item._id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-6 py-4 font-medium text-gray-900">
+                                            {item.salesperson?.name || 'Unknown'}
+                                            <div className="text-xs text-gray-400">{item.salesperson?.email}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="p-3 bg-gray-50 rounded border border-gray-100 font-mono text-xs text-gray-700">
+                                                {item.salesperson?.bankDetails ? (
+                                                    <div className="whitespace-pre-wrap">{item.salesperson.bankDetails}</div>
+                                                ) : (
+                                                    <span className="text-red-500">No Bank Info Provided</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 font-bold text-gray-900">RM {item.amount.toFixed(2)}</td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button
+                                                onClick={() => handleUpdateStatus(item._id, 'approved')}
+                                                className="px-4 py-2 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 flex items-center gap-1 ml-auto"
+                                            >
+                                                <CheckCircle size={14} /> Mark Completed
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {processingList.length === 0 && (
+                                    <tr>
+                                        <td colSpan="4" className="px-6 py-8 text-center text-gray-400">No payments currently in processing.</td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </>
                 ) : (
                     <>
                         <div className="p-4 border-b border-gray-200 bg-gray-50">
-                            <h3 className="font-bold text-gray-900">Batch History</h3>
+                            <h3 className="font-bold text-gray-900">History (Aggregated by Date)</h3>
                         </div>
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 text-xs uppercase text-gray-500 font-semibold">
                                 <tr>
-                                    <th className="px-6 py-4">Batch ID</th>
-                                    <th className="px-6 py-4">Date Submitted</th>
+                                    <th className="px-6 py-4">Batch Date</th>
                                     <th className="px-6 py-4">Recipients</th>
                                     <th className="px-6 py-4">Total Amount</th>
                                     <th className="px-6 py-4">Status</th>
@@ -164,36 +314,20 @@ const PayoutsPage = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 text-sm">
-                                {batchHistory.map(batch => (
+                                {batchList.map(batch => (
                                     <tr key={batch.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 font-mono text-gray-600">{batch.id}</td>
-                                        <td className="px-6 py-4">{batch.date}</td>
+                                        <td className="px-6 py-4 font-mono text-gray-600">{batch.date}</td>
                                         <td className="px-6 py-4">{batch.recipients}</td>
                                         <td className="px-6 py-4 font-bold text-gray-900">RM {batch.total.toLocaleString()}</td>
                                         <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(batch.status)}`}>
-                                                    {batch.status === 'Processing' && <RefreshCw size={10} className="mr-1 animate-spin" />}
-                                                    {batch.status === 'Failed' && <XCircle size={10} className="mr-1" />}
-                                                    {batch.status}
-                                                </span>
-                                            </div>
-                                            {batch.status === 'Processing' && (
-                                                <div className="w-24 h-1 bg-blue-100 rounded-full mt-1 overflow-hidden">
-                                                    <div className="h-full bg-blue-500 w-[65%]"></div>
-                                                </div>
-                                            )}
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                Completed
+                                            </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            {batch.status === 'Failed' ? (
-                                                <button className="text-red-600 hover:text-red-800 text-xs font-bold border border-red-200 px-2 py-1 rounded bg-red-50 hover:bg-red-100 transition-colors">
-                                                    Retry
-                                                </button>
-                                            ) : (
-                                                <button className="text-teal-600 hover:text-teal-800">
-                                                    <FileText size={18} />
-                                                </button>
-                                            )}
+                                            <button className="text-teal-600 hover:text-teal-800">
+                                                <FileText size={18} />
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}

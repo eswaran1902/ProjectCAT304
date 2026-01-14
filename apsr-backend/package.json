@@ -8,13 +8,18 @@
         "dev": "nodemon server.js"
     },
     "dependencies": {
+        "@google/generative-ai": "^0.24.1",
+        "axios": "^1.13.2",
         "bcryptjs": "^2.4.3",
         "cors": "^2.8.5",
         "dotenv": "^16.3.1",
         "express": "^4.18.2",
         "jsonwebtoken": "^9.0.2",
+        "mongodb-memory-server": "^9.1.6",
         "mongoose": "^8.0.3",
-        "mongodb-memory-server": "^9.1.6"
+        "multer": "^2.0.2",
+        "openai": "^6.15.0",
+        "socket.io": "^4.8.3"
     },
     "devDependencies": {
         "nodemon": "^3.0.2"

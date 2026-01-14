@@ -17,7 +17,8 @@ export const AuthProvider = ({ children }) => {
             const storedRole = localStorage.getItem('role');
             const storedName = localStorage.getItem('name');
             const storedId = localStorage.getItem('userId');
-            setUser({ role: storedRole, name: storedName, id: storedId });
+            const storedRef = localStorage.getItem('referralCodeOwn'); // Use distinct key to avoid conflict with buyer attribution
+            setUser({ role: storedRole, name: storedName, id: storedId, referralCode: storedRef });
         }
         setLoading(false);
     }, []);
@@ -29,7 +30,10 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('role', res.data.role);
             localStorage.setItem('name', res.data.name);
             localStorage.setItem('userId', res.data.id);
-            setUser({ role: res.data.role, name: res.data.name, id: res.data.id });
+            if (res.data.referralCode) {
+                localStorage.setItem('referralCodeOwn', res.data.referralCode);
+            }
+            setUser({ role: res.data.role, name: res.data.name, id: res.data.id, referralCode: res.data.referralCode });
             return res.data.role; // Return role for redirect
         } catch (err) {
             throw err.response?.data?.msg || 'Login failed';
@@ -43,7 +47,10 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('role', res.data.role);
             localStorage.setItem('name', res.data.name);
             localStorage.setItem('userId', res.data.id);
-            setUser({ role: res.data.role, name: res.data.name, id: res.data.id });
+            if (res.data.referralCode) {
+                localStorage.setItem('referralCodeOwn', res.data.referralCode);
+            }
+            setUser({ role: res.data.role, name: res.data.name, id: res.data.id, referralCode: res.data.referralCode });
             return res.data.role;
         } catch (err) {
             throw err.response?.data?.msg || 'Signup failed';
@@ -55,11 +62,12 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('role');
         localStorage.removeItem('name');
         localStorage.removeItem('userId');
+        localStorage.removeItem('referralCodeOwn');
         setUser(null);
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+        <AuthContext.Provider value={{ user, token: localStorage.getItem('token'), login, register, logout, loading }}>
             {!loading && children}
         </AuthContext.Provider>
     );

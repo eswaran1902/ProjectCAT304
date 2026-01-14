@@ -15,21 +15,30 @@ app.use(express.json());
 // Database Connection
 // Database Connection
 const { MongoMemoryServer } = require('mongodb-memory-server');
+const fs = require('fs');
+const path = require('path');
 
 const connectDB = async () => {
     try {
-        let mongoUri = process.env.MONGODB_URI;
-
-        // Explicitly check if running local without custom URI
-        if (!mongoUri || mongoUri.includes('localhost')) {
-            console.log('Local MongoDB not found or default used. Starting in-memory MongoDB...');
-            const mongod = await MongoMemoryServer.create();
-            mongoUri = mongod.getUri();
-            console.log('In-memory MongoDB started at', mongoUri);
+        const dbPath = path.join(__dirname, 'backend-local-db');
+        if (!fs.existsSync(dbPath)) {
+            fs.mkdirSync(dbPath, { recursive: true });
         }
 
+        console.log('Forcing In-Memory MongoDB with Persistence...');
+        const mongod = await MongoMemoryServer.create({
+            instance: {
+                dbPath: dbPath,
+                storageEngine: 'wiredTiger'
+            }
+        });
+
+        const mongoUri = mongod.getUri();
+        console.log('Local MongoDB started at', mongoUri);
+        console.log('Data persisting to:', dbPath);
+
         await mongoose.connect(mongoUri);
-        console.log('MongoDB connected');
+        console.log('MongoDB connected (Local Persistent)');
     } catch (err) {
         console.error('MongoDB connection error:', err);
     }
@@ -51,6 +60,7 @@ const orderRoutes = require('./routes/orders');
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/ai', require('./routes/aiRoutes'));
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

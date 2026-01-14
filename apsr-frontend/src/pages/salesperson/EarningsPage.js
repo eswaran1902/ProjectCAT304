@@ -1,14 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import SalespersonLayout from '../../components/layouts/SalespersonLayout';
 import { DollarSign, Download, Calendar, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import axios from 'axios';
+import AuthContext from '../../context/AuthContext';
 
 const EarningsPage = () => {
-    // Mock Transaction History
-    const transactions = [
-        { id: 'TX-1001', date: 'Oct 24, 2024', desc: 'Commission - CRM Suite', type: 'Credit', amount: 45.00, status: 'Released' },
-        { id: 'TX-1002', date: 'Oct 22, 2024', desc: 'Commission - Marketing Tool', type: 'Credit', amount: 15.00, status: 'Pending' },
-        { id: 'TX-0998', date: 'Oct 15, 2024', desc: 'Payout - Bank Transfer', type: 'Debit', amount: -650.00, status: 'Paid' },
-    ];
+    const { token } = useContext(AuthContext);
+    const [stats, setStats] = useState({ pending: 0 });
+    const [transactions, setTransactions] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                // Fetch Stats for "Unpaid Balance"
+                const statsRes = await axios.get('http://localhost:5001/api/dashboard/salesperson/stats', {
+                    headers: { 'x-auth-token': token }
+                });
+                setStats(statsRes.data);
+
+                // Fetch Transaction History
+                const histRes = await axios.get('http://localhost:5001/api/dashboard/salesperson/history', {
+                    headers: { 'x-auth-token': token }
+                });
+                setTransactions(histRes.data);
+            } catch (err) {
+                console.error("Error fetching earnings data:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (token) fetchData();
+    }, [token]);
+
+    const handleRequestPayout = async () => {
+        if (!stats.pending || stats.pending < 50) return;
+
+        if (!window.confirm(`Request payout for RM ${stats.pending.toFixed(2)}?`)) return;
+
+        try {
+            await axios.post('http://localhost:5001/api/dashboard/salesperson/payouts', {}, {
+                headers: { 'x-auth-token': token }
+            });
+            alert('Payout requested successfully!');
+            // Refresh Data
+            window.location.reload();
+        } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.msg || 'Failed to request payout');
+        }
+    };
 
     return (
         <SalespersonLayout>
@@ -28,14 +70,21 @@ const EarningsPage = () => {
                 <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
                     <div>
                         <p className="text-gray-400 font-medium mb-1 uppercase tracking-wide text-xs">Unpaid Balance</p>
-                        <h2 className="text-4xl font-bold text-white mb-2">RM 1,250.00</h2>
+                        <h2 className="text-4xl font-bold text-white mb-2">RM {stats.pending?.toFixed(2) || '0.00'}</h2>
                         <div className="flex items-center gap-2 text-sm text-gray-300">
                             <div className="w-2 h-2 rounded-full bg-green-500"></div>
                             Next Payout: Nov 01, 2024
                         </div>
                     </div>
                     <div>
-                        <button className="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-6 rounded-lg transition-colors shadow-lg shadow-teal-900/20">
+                        <button
+                            onClick={handleRequestPayout}
+                            disabled={!stats.pending || stats.pending < 50}
+                            className={`font-bold py-2.5 px-6 rounded-lg transition-colors shadow-lg shadow-teal-900/20 ${!stats.pending || stats.pending < 50
+                                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                    : 'bg-teal-600 hover:bg-teal-700 text-white'
+                                }`}
+                        >
                             Request Payout Now
                         </button>
                         <p className="text-xs text-gray-500 mt-2 text-center md:text-right">Min. threshold RM 50.00</p>
@@ -64,28 +113,33 @@ const EarningsPage = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-sm">
-                        {transactions.map(tx => (
-                            <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-6 py-4 text-gray-500">{tx.date}</td>
-                                <td className="px-6 py-4 font-medium text-gray-900">{tx.desc}</td>
-                                <td className="px-6 py-4">
-                                    <span className={`flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded border ${tx.type === 'Credit' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-50 text-gray-700 border-gray-200'
-                                        }`}>
-                                        {tx.type === 'Credit' ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                                        {tx.type}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className={`inline-block w-2 H-2 rounded-full mr-2 ${tx.status === 'Paid' ? 'bg-gray-400' :
-                                        tx.status === 'Pending' ? 'bg-amber-400' : 'bg-green-500'
-                                        }`}></span>
-                                    {tx.status}
-                                </td>
-                                <td className={`px-6 py-4 text-right font-bold ${tx.amount > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                                    {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
-                                </td>
-                            </tr>
-                        ))}
+                        {loading ? (
+                            <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">Loading history...</td></tr>
+                        ) : transactions.length > 0 ? (
+                            transactions.map(tx => (
+                                <tr key={tx._id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="px-6 py-4 text-gray-500">{new Date(tx.createdAt).toLocaleDateString()}</td>
+                                    <td className="px-6 py-4 font-medium text-gray-900">{tx.product?.name || 'Product Sale'}</td>
+                                    <td className="px-6 py-4">
+                                        <span className={'flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded border bg-green-50 text-green-700 border-green-100'}>
+                                            <ArrowUpRight size={12} />
+                                            Credit
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className={`inline-block w-2 H-2 rounded-full mr-2 ${tx.status === 'paid' ? 'bg-gray-400' :
+                                            tx.status === 'pending' ? 'bg-amber-400' : 'bg-green-500'
+                                            }`}></span>
+                                        {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
+                                    </td>
+                                    <td className={`px-6 py-4 text-right font-bold text-green-600`}>
+                                        +RM {tx.commissionAmount.toFixed(2)}
+                                    </td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">No transactions found.</td></tr>
+                        )}
                     </tbody>
                 </table>
             </div>

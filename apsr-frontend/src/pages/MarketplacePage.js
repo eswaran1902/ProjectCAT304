@@ -6,6 +6,7 @@ import AuthModal from '../components/AuthModal';
 import { useCart } from '../context/CartContext';
 import AuthContext from '../context/AuthContext';
 import { useContext } from 'react';
+import AiProductRecommendations from '../components/AiProductRecommendations';
 
 const MarketplacePage = () => {
     const [products, setProducts] = useState([]);
@@ -121,6 +122,7 @@ const MarketplacePage = () => {
 
             {/* Product Grid */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                <AiProductRecommendations />
                 {loading ? (
                     <div className="text-center py-20">
                         <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>

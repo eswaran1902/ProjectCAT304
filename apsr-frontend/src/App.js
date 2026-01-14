@@ -1,7 +1,9 @@
 import React, { useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import ChatWidget from './components/ChatWidget';
 import { AuthProvider } from './context/AuthContext';
 import AuthContext from './context/AuthContext';
+import { SocketProvider } from './context/SocketContext';
 
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -17,11 +19,15 @@ import ChannelsPage from './pages/admin/ChannelsPage';
 import DisputesPage from './pages/admin/DisputesPage';
 import AuditPage from './pages/admin/AuditPage';
 import SettingsPage from './pages/admin/SettingsPage';
+import OrderApprovalsPage from './pages/admin/OrderApprovalsPage';
+import BotManagerPage from './pages/admin/BotManagerPage';
 import PromotionPage from './pages/PromotionPage';
 import CatalogPage from './pages/salesperson/CatalogPage';
 import EarningsPage from './pages/salesperson/EarningsPage';
 import LandingPage from './pages/LandingPage';
 import MarketplacePage from './pages/MarketplacePage';
+import MyLinksPage from './pages/salesperson/MyLinksPage';
+import SalespersonSettingsPage from './pages/salesperson/SettingsPage';
 import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
 import { CartProvider } from './context/CartContext';
@@ -46,178 +52,215 @@ const ProtectedRoute = ({ children, allowedRole }) => {
 };
 
 function App() {
+  // Global Referral Tracker
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref');
+    if (refCode) {
+      localStorage.setItem('referralCode', refCode);
+      // Clean URL (optional but nice)
+      // window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   return (
     <AuthProvider>
-      <CartProvider>
-        <Router>
-          <div className="min-h-screen font-sans text-gray-900 bg-gray-50">
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/marketplace" element={<MarketplacePage />} />
-              <Route path="/cart" element={<CartPage />} />
-              <Route path="/checkout" element={<CheckoutPage />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
+      <SocketProvider>
+        <CartProvider>
+          <Router>
+            <div className="min-h-screen font-sans text-gray-900 bg-gray-50">
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/marketplace" element={<MarketplacePage />} />
+                <Route path="/cart" element={<CartPage />} />
+                <Route path="/checkout" element={<CheckoutPage />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
 
-              {/* Protected Routes */}
-              <Route
-                path="/salesperson"
-                element={
-                  <ProtectedRoute allowedRole="salesperson">
-                    <SalespersonDashboard />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/salesperson/catalog"
-                element={
-                  <ProtectedRoute allowedRole="salesperson">
-                    <CatalogPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/salesperson/earnings"
-                element={
-                  <ProtectedRoute allowedRole="salesperson">
-                    <EarningsPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Placeholder for others */}
-              {['links', 'settings'].map(path => (
+                {/* Protected Routes */}
                 <Route
-                  key={path}
-                  path={`/salesperson/${path}`}
+                  path="/salesperson"
                   element={
                     <ProtectedRoute allowedRole="salesperson">
                       <SalespersonDashboard />
                     </ProtectedRoute>
                   }
                 />
-              ))}
 
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <AdminDashboard />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/salesperson/catalog"
+                  element={
+                    <ProtectedRoute allowedRole="salesperson">
+                      <CatalogPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/admin/orders"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <OrdersPage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/salesperson/earnings"
+                  element={
+                    <ProtectedRoute allowedRole="salesperson">
+                      <EarningsPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/admin/salespeople"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <SalespeoplePage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/salesperson/links"
+                  element={
+                    <ProtectedRoute allowedRole="salesperson">
+                      <MyLinksPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/admin/payouts"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <PayoutsPage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/salesperson/settings"
+                  element={
+                    <ProtectedRoute allowedRole="salesperson">
+                      <SalespersonSettingsPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/admin/commissions"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <CommissionsPage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <AdminDashboard />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/admin/products"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <ProductsPage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/admin/orders"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <OrdersPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/admin/channels"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <ChannelsPage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/admin/salespeople"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <SalespeoplePage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/admin/disputes"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <DisputesPage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/admin/payouts"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <PayoutsPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/admin/audit"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <AuditPage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/admin/commissions"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <CommissionsPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/admin/settings"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <SettingsPage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/admin/products"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <ProductsPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Shared/Protected Routes */}
-              <Route
-                path="/promotion/:id"
-                element={
-                  <ProtectedRoute allowedRole="salesperson">
-                    <PromotionPage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/admin/channels"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <ChannelsPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/attribution"
-                element={
-                  <ProtectedRoute allowedRole="admin">
-                    <AttributionPage />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/admin/bot"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <BotManagerPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Catch all */}
-              <Route path="*" element={<Navigate to="/login" />} />
+                <Route
+                  path="/admin/disputes"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <DisputesPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-            </Routes>
-          </div>
+                <Route
+                  path="/admin/audit"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <AuditPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-        </Router>
-      </CartProvider>
+                <Route
+                  path="/admin/settings"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <SettingsPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/approvals"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <OrderApprovalsPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* Shared/Protected Routes */}
+                <Route
+                  path="/promotion/:id"
+                  element={
+                    <ProtectedRoute allowedRole="salesperson">
+                      <PromotionPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/attribution"
+                  element={
+                    <ProtectedRoute allowedRole="admin">
+                      <AttributionPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* Catch all */}
+                <Route path="*" element={<Navigate to="/login" />} />
+
+              </Routes>
+              <ChatWidget />
+            </div>
+
+          </Router>
+        </CartProvider>
+      </SocketProvider>
     </AuthProvider >
   );
 }

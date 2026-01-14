@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import SalespersonLayout from '../../components/layouts/SalespersonLayout';
-import { Search, Copy, Check } from 'lucide-react';
+import { Search, Copy, Check, MessageCircle, Send } from 'lucide-react';
+import AuthContext from '../../context/AuthContext';
 
 const CatalogPage = () => {
+    const { user } = useContext(AuthContext); // Get current user for referral code
     const [searchTerm, setSearchTerm] = useState('');
     const [copiedId, setCopiedId] = useState(null);
     const [products, setProducts] = useState([]);
@@ -23,10 +25,31 @@ const CatalogPage = () => {
         fetchProducts();
     }, []);
 
+    const getReferralLink = (productId) => {
+        // Use user's referral code or ID
+        const refCode = user?.referralCode || user?._id || 'unknown';
+        return `http://localhost:3000/marketplace?ref=${refCode}&product=${productId}`;
+    };
+
     const handleCopy = (id) => {
-        navigator.clipboard.writeText(`https://apsr.com/ref/ahmad/${id}`);
+        const link = getReferralLink(id);
+        navigator.clipboard.writeText(link);
         setCopiedId(id);
         setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    const handleWhatsApp = (product) => {
+        const link = getReferralLink(product._id);
+        const text = `Check out this amazing product: ${product.name}! Buy here: ${link}`;
+        const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+        window.open(url, '_blank');
+    };
+
+    const handleTelegram = (product) => {
+        const link = getReferralLink(product._id);
+        const text = `Check out ${product.name}! ${link}`;
+        const url = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
+        window.open(url, '_blank');
     };
 
     return (
@@ -57,9 +80,13 @@ const CatalogPage = () => {
                 ) : (
                     products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase())).map(product => (
                         <div key={product._id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col group hover:shadow-md transition-shadow">
-                            <div className="h-40 bg-gray-100 flex items-center justify-center relative">
-                                <div className="text-gray-400 font-bold text-2xl opacity-20">{product.category || 'Product'}</div>
-                                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur px-2 py-1 rounded-lg text-xs font-bold text-gray-900 shadow-sm">
+                            <div className="h-40 bg-gray-100 flex items-center justify-center relative overflow-hidden">
+                                {product.imageUrl ? (
+                                    <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                ) : (
+                                    <div className="text-gray-400 font-bold text-2xl opacity-20">{product.category || 'Product'}</div>
+                                )}
+                                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur px-2 py-1 rounded-lg text-xs font-bold text-gray-900 shadow-sm z-10">
                                     RM {product.price?.toFixed(2)}
                                 </div>
                             </div>
@@ -83,16 +110,32 @@ const CatalogPage = () => {
                                     </div>
                                 </div>
 
-                                <button
-                                    onClick={() => handleCopy(product._id)}
-                                    className={`w-full py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${copiedId === product._id
-                                        ? 'bg-green-600 text-white'
-                                        : 'bg-gray-900 text-white hover:bg-black'
-                                        }`}
-                                >
-                                    {copiedId === product._id ? <Check size={16} /> : <Copy size={16} />}
-                                    {copiedId === product._id ? 'Link Copied!' : 'Copy Link'}
-                                </button>
+                                <div className="grid grid-cols-5 gap-2">
+                                    <button
+                                        onClick={() => handleCopy(product._id)}
+                                        className={`col-span-3 py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${copiedId === product._id
+                                            ? 'bg-green-600 text-white'
+                                            : 'bg-gray-900 text-white hover:bg-black'
+                                            }`}
+                                    >
+                                        {copiedId === product._id ? <Check size={16} /> : <Copy size={16} />}
+                                        {copiedId === product._id ? 'Copied!' : 'Copy Link'}
+                                    </button>
+                                    <button
+                                        onClick={() => handleWhatsApp(product)}
+                                        className="col-span-1 bg-green-500 hover:bg-green-600 text-white rounded-lg flex items-center justify-center transition-colors"
+                                        title="Share on WhatsApp"
+                                    >
+                                        <MessageCircle size={18} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleTelegram(product)}
+                                        className="col-span-1 bg-sky-500 hover:bg-sky-600 text-white rounded-lg flex items-center justify-center transition-colors"
+                                        title="Share on Telegram"
+                                    >
+                                        <Send size={18} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ))

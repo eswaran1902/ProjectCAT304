@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import AdminLayout from '../../components/layouts/AdminLayout';
-import { Package, Search, Plus, ExternalLink, RefreshCw, Trash2, Filter } from 'lucide-react';
+import { Package, Search, Plus, ExternalLink, RefreshCw, Trash2, Filter, Wand2, Image as ImageIcon } from 'lucide-react';
 
 const ProductsPage = () => {
     const [products, setProducts] = useState([]);
@@ -16,8 +16,30 @@ const ProductsPage = () => {
         price: '',
         commissionRate: '',
         commissionType: 'percentage',
-        description: ''
+        description: '',
+        imageUrl: '' // Added image URL
     });
+
+    // AI Handlers
+    const [generating, setGenerating] = useState(false);
+
+    const handleGenerateDescription = async () => {
+        if (!formData.name) return alert('Please enter a product name first.');
+        setGenerating(true);
+        try {
+            const res = await axios.post('http://localhost:5001/api/ai/generate-description', {
+                productName: formData.name,
+                category: formData.category,
+                currentDescription: formData.description
+            });
+            setFormData(prev => ({ ...prev, description: res.data.description }));
+        } catch (err) {
+            console.error(err);
+            alert('Failed to generate description');
+        } finally {
+            setGenerating(false);
+        }
+    };
 
     const fetchProducts = async () => {
         try {
@@ -44,21 +66,58 @@ const ProductsPage = () => {
         }
     };
 
+    const [imageFile, setImageFile] = useState(null);
+
     const handleAddProduct = async (e) => {
         e.preventDefault();
+
+        const data = new FormData();
+        data.append('name', formData.name);
+        data.append('category', formData.category);
+        data.append('price', formData.price);
+        data.append('commissionRate', formData.commissionRate);
+        data.append('commissionType', formData.commissionType);
+        data.append('description', formData.description);
+        data.append('imageUrl', formData.imageUrl || ''); // Send URL if it exists
+        if (imageFile) {
+            data.append('image', imageFile);
+        }
+
         try {
-            const res = await axios.post('http://localhost:5001/api/products', formData);
+            // Axios automatically sets Content-Type to multipart/form-data with boundary when data is FormData
+            // We explicitly add the token to ensure it's present
+            console.log('Sending FormData...', Object.fromEntries(data));
+            const token = localStorage.getItem('token');
+            const res = await axios.post('http://localhost:5001/api/products', data, {
+                headers: {
+                    'x-auth-token': token
+                }
+            });
             setProducts([res.data, ...products]); // Add to top
             setShowModal(false);
             setFormData({ name: '', category: 'Software', price: '', commissionRate: '', commissionType: 'percentage', description: '' });
+            setImageFile(null);
+            alert("Product added successfully!");
         } catch (err) {
-            alert('Failed to add product');
+            console.error('Add Product Failed:', err);
+            if (err.response) {
+                console.error('Server Responded:', err.response.data);
+                alert(`Failed to add product: ${err.response.data.msg || err.response.statusText}`);
+            } else {
+                alert('Failed to add product: Network Error');
+            }
         }
+    };
+
+    const handleFileChange = (e) => {
+        setImageFile(e.target.files[0]);
     };
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
+
+    // ... (rest of render)
 
     return (
         <AdminLayout>
@@ -116,8 +175,50 @@ const ProductsPage = () => {
                                     <input type="number" name="commissionRate" required value={formData.commissionRate} onChange={handleChange} className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:border-teal-500" placeholder="10" />
                                 </div>
                             </div>
+
+                            {/* Image Upload Section */}
                             <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Description</label>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">Product Image</label>
+
+                                <div className="mb-3">
+                                    <input
+                                        name="imageUrl"
+                                        value={formData.imageUrl}
+                                        onChange={handleChange}
+                                        className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:border-teal-500 text-sm"
+                                        placeholder="Paste image URL here..."
+                                    />
+                                    <div className="text-center text-xs text-gray-400 my-1 font-bold">- OR -</div>
+                                </div>
+
+                                <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer relative">
+                                    <input
+                                        type="file"
+                                        name="image"
+                                        onChange={handleFileChange}
+                                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                        accept="image/*"
+                                    />
+                                    <div className="text-center">
+                                        <ImageIcon className="mx-auto text-gray-400 mb-2" size={24} />
+                                        <p className="text-sm text-gray-500 font-medium">{imageFile ? imageFile.name : 'Click to upload image'}</p>
+                                        <p className="text-xs text-gray-400 mt-1">PNG, JPG, GIF max 5MB</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1 flex justify-between">
+                                    Description
+                                    <button
+                                        type="button"
+                                        onClick={handleGenerateDescription}
+                                        disabled={generating}
+                                        className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-md hover:bg-indigo-100 flex items-center gap-1 transition-colors"
+                                    >
+                                        <Wand2 size={12} /> {generating ? 'Generating...' : 'Auto-Generate'}
+                                    </button>
+                                </label>
                                 <textarea name="description" value={formData.description} onChange={handleChange} className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:border-teal-500" rows="3" placeholder="Brief details..."></textarea>
                             </div>
                             <button type="submit" className="w-full bg-teal-600 text-white font-bold py-3 rounded-xl hover:bg-teal-700">Save Product</button>

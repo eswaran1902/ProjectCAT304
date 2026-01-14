@@ -1,30 +1,60 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import AdminLayout from '../components/layouts/AdminLayout';
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer,
     PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { ArrowUpRight, ArrowDownRight, AlertCircle, ShoppingBag, Users, DollarSign, CheckCircle, Settings } from 'lucide-react';
+import axios from 'axios';
+import AuthContext from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 
 const AdminDashboard = () => {
-    // Mock Data for Charts
-    const salesData = [
-        { name: 'Mon', sales: 4000, com: 400 },
-        { name: 'Tue', sales: 3000, com: 300 },
-        { name: 'Wed', sales: 2000, com: 200 },
-        { name: 'Thu', sales: 2780, com: 278 },
-        { name: 'Fri', sales: 1890, com: 189 },
-        { name: 'Sat', sales: 2390, com: 239 },
-        { name: 'Sun', sales: 3490, com: 349 },
-    ];
+    const { token } = useContext(AuthContext);
+    const socket = useSocket();
 
-    const channelData = [
-        { name: 'WhatsApp', value: 400 },
-        { name: 'Telegram', value: 300 },
-        { name: 'Direct', value: 300 },
-        { name: 'QR Code', value: 200 },
-    ];
-    const COLORS = ['#0f766e', '#0e7490', '#f59e0b', '#10b981'];
+    const [stats, setStats] = useState({
+        headlines: { totalGMV: 0, totalPendingComm: 0, totalPaidComm: 0, flaggedCount: 0 },
+        salesTrend: [],
+        channelMix: [],
+        topPerformers: []
+    });
+
+    const fetchDashboardData = async () => {
+        try {
+            const res = await axios.get('http://localhost:5001/api/dashboard/admin/stats', {
+                headers: { 'x-auth-token': token }
+            });
+            setStats(res.data);
+        } catch (err) {
+            console.error("Error fetching admin stats:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (token) fetchDashboardData();
+    }, [token]);
+
+    // Real-time Updates
+    useEffect(() => {
+        if (!socket) return;
+        const handleUpdate = () => {
+            console.log("Admin Dashboard: Real-time update received");
+            fetchDashboardData();
+        };
+
+        socket.on('stats_updated', handleUpdate);
+        socket.on('order_created', handleUpdate);
+        socket.on('order_updated', handleUpdate);
+
+        return () => {
+            socket.off('stats_updated', handleUpdate);
+            socket.off('order_created', handleUpdate);
+            socket.off('order_updated', handleUpdate);
+        };
+    }, [socket, token]);
+
+    const COLORS = ['#0f766e', '#0e7490', '#f59e0b', '#10b981', '#6366f1'];
 
     return (
         <AdminLayout>
@@ -53,7 +83,7 @@ const AdminDashboard = () => {
                         <ShoppingBag size={48} className="text-teal-600" />
                     </div>
                     <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Total GMV</p>
-                    <h3 className="text-3xl font-bold text-gray-900 mt-1">RM 154,200</h3>
+                    <h3 className="text-3xl font-bold text-gray-900 mt-1">RM {stats.headlines.totalGMV.toLocaleString()}</h3>
                     <div className="flex items-center mt-2 text-sm text-green-600 font-medium">
                         <ArrowUpRight size={16} className="mr-1" />
                         <span>+12.5%</span>
@@ -67,7 +97,7 @@ const AdminDashboard = () => {
                         <DollarSign size={48} className="text-amber-500" />
                     </div>
                     <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Commissions Owed</p>
-                    <h3 className="text-3xl font-bold text-amber-500 mt-1">RM 12,450</h3>
+                    <h3 className="text-3xl font-bold text-amber-500 mt-1">RM {stats.headlines.totalPendingComm.toLocaleString()}</h3>
                     <div className="flex items-center mt-2 text-sm text-gray-500 font-medium">
                         <span>45 Active Salespeople</span>
                     </div>
@@ -79,7 +109,7 @@ const AdminDashboard = () => {
                         <CheckCircle size={48} className="text-green-600" />
                     </div>
                     <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Commissions Paid</p>
-                    <h3 className="text-3xl font-bold text-green-700 mt-1">RM 142,000</h3>
+                    <h3 className="text-3xl font-bold text-green-700 mt-1">RM {stats.headlines.totalPaidComm.toLocaleString()}</h3>
                     <div className="flex items-center mt-2 text-sm text-green-600 font-medium">
                         <ArrowUpRight size={16} className="mr-1" />
                         <span>All time</span>
@@ -91,7 +121,7 @@ const AdminDashboard = () => {
                     <div className="flex items-start justify-between">
                         <div>
                             <p className="text-sm font-bold text-red-800 uppercase tracking-wider">Urgent Review</p>
-                            <h3 className="text-3xl font-bold text-red-900 mt-1">5</h3>
+                            <h3 className="text-3xl font-bold text-red-900 mt-1">{stats.headlines.flaggedCount}</h3>
                             <p className="text-sm text-red-700 mt-2">Flagged Orders</p>
                         </div>
                         <div className="p-3 bg-white rounded-full text-red-600 shadow-sm">
@@ -108,7 +138,7 @@ const AdminDashboard = () => {
                     <h3 className="font-bold text-gray-800 mb-6">Sales & Commission Trend</h3>
                     <div className="h-80">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={salesData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                            <AreaChart data={stats.salesTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                                 <defs>
                                     <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#0f766e" stopOpacity={0.8} />
@@ -134,7 +164,7 @@ const AdminDashboard = () => {
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
-                                    data={channelData}
+                                    data={stats.channelMix}
                                     cx="50%"
                                     cy="50%"
                                     innerRadius={60}
@@ -143,7 +173,7 @@ const AdminDashboard = () => {
                                     paddingAngle={5}
                                     dataKey="value"
                                 >
-                                    {channelData.map((entry, index) => (
+                                    {stats.channelMix.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
@@ -167,18 +197,20 @@ const AdminDashboard = () => {
                         <button className="text-teal-600 text-sm font-medium hover:text-teal-700">View All</button>
                     </div>
                     <div className="divide-y divide-gray-100">
-                        {[1, 2, 3].map((i) => (
+                        {stats.topPerformers.map((user, i) => (
                             <div key={i} className="p-4 flex items-center justify-between hover:bg-gray-50">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0"></div>
+                                    <div className="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center font-bold text-gray-600">
+                                        {user.name.charAt(0)}
+                                    </div>
                                     <div>
-                                        <p className="font-medium text-gray-900">Ahmad Rozali</p>
-                                        <p className="text-xs text-gray-500">Tier 1 Partner</p>
+                                        <p className="font-medium text-gray-900">{user.name}</p>
+                                        <p className="text-xs text-gray-500">{user.salesCount} Sales</p>
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <p className="font-bold text-gray-900">RM 12,400</p>
-                                    <p className="text-xs text-green-600">32 Sales</p>
+                                    <p className="font-bold text-gray-900">RM {user.totalComm.toFixed(2)}</p>
+                                    <p className="text-xs text-green-600">Earned</p>
                                 </div>
                             </div>
                         ))}

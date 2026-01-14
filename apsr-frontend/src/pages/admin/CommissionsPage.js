@@ -1,19 +1,115 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { Download, Plus, Search, Calendar, FileText, ArrowUpRight, ArrowDownRight, TrendingUp } from 'lucide-react';
+import axios from 'axios';
+import AuthContext from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 
 const CommissionsPage = () => {
+    const { token } = useContext(AuthContext);
+    const socket = useSocket();
     const [selectedPeriod, setSelectedPeriod] = useState('This Month');
     const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+    const [ledgerEntries, setLedgerEntries] = useState([]);
+    const [salespeople, setSalespeople] = useState([]);
+    const [formData, setFormData] = useState({
+        type: 'Adjustment (Credit)',
+        salespersonId: '',
+        amount: '',
+        description: ''
+    });
 
-    // Mock Ledger Data
-    const ledgerEntries = [
-        { id: 'TX-9901', date: 'Oct 24, 2024', salesperson: 'Alex Morgan', type: 'Commission', desc: 'Order #ORD-7721 - CRM Suite', amount: 45.00, status: 'Payable', balance: 1250.00 },
-        { id: 'TX-9902', date: 'Oct 24, 2024', salesperson: 'Sarah Jay', type: 'Commission', desc: 'Order #ORD-7722 - Enterprise License', amount: 210.00, status: 'Pending', balance: 840.50 },
-        { id: 'TX-9903', date: 'Oct 23, 2024', salesperson: 'Alex Morgan', type: 'Payout', desc: 'Batch #BATCH-203 Withdrawal', amount: -1400.00, status: 'Paid', balance: 1205.00 },
-        { id: 'TX-9904', date: 'Oct 22, 2024', salesperson: 'Mike Ross', type: 'Reversal', desc: 'Refund #REF-004', amount: -55.00, status: 'Completed', balance: 450.00 },
-        { id: 'TX-9905', date: 'Oct 22, 2024', salesperson: 'Jessica Pearson', type: 'Bonus', desc: 'Q3 Performance Bonus', amount: 500.00, status: 'Payable', balance: 3420.00 },
-    ];
+    const fetchLedger = async () => {
+        try {
+            const res = await axios.get('http://localhost:5001/api/dashboard/admin/ledger', {
+                headers: { 'x-auth-token': token }
+            });
+            setLedgerEntries(res.data);
+        } catch (err) {
+            console.error("Error fetching ledger:", err);
+        }
+    };
+
+    const fetchSalespeople = async () => {
+        try {
+            const res = await axios.get('http://localhost:5001/api/dashboard/admin/salespeople-list', {
+                headers: { 'x-auth-token': token }
+            });
+            setSalespeople(res.data);
+        } catch (err) {
+            console.error("Error fetching salespeople:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (token) {
+            fetchLedger();
+            fetchSalespeople();
+        }
+    }, [token]);
+
+    // Real-time listener
+    useEffect(() => {
+        if (!socket) return;
+        const handleUpdate = () => {
+            console.log("Real-time update: Ledger refreshed");
+            fetchLedger();
+        };
+
+        socket.on('stats_updated', handleUpdate);
+        socket.on('order_created', handleUpdate);
+        socket.on('order_updated', handleUpdate);
+
+        return () => {
+            socket.off('stats_updated', handleUpdate);
+            socket.off('order_created', handleUpdate);
+            socket.off('order_updated', handleUpdate);
+        };
+    }, [socket, token]);
+
+    const handleCreateEntry = async () => {
+        if (!formData.salespersonId || !formData.amount || !formData.description) {
+            alert("Please fill in all fields");
+            return;
+        }
+
+        try {
+            await axios.post('http://localhost:5001/api/dashboard/admin/ledger/entry', formData, {
+                headers: { 'x-auth-token': token }
+            });
+            setShowAdjustmentModal(false);
+            setFormData({ type: 'Adjustment (Credit)', salespersonId: '', amount: '', description: '' });
+            fetchLedger(); // Refresh immediatley
+        } catch (err) {
+            console.error("Error creating entry:", err);
+            alert("Failed to create entry");
+        }
+    };
+
+    const handleExport = () => {
+        const headers = ["Transaction ID", "Date", "Salesperson", "Type", "Description", "Amount", "Status"];
+        const rows = ledgerEntries.map(e => [
+            e.id,
+            new Date(e.date).toLocaleDateString(),
+            e.salesperson,
+            e.type,
+            `"${e.desc}"`, // Quote description to handle commas
+            e.amount.toFixed(2),
+            e.status
+        ]);
+
+        const csvContent = "data:text/csv;charset=utf-8,"
+            + headers.join(",") + "\n"
+            + rows.map(e => e.join(",")).join("\n");
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "commission_ledger_" + new Date().toISOString().slice(0, 10) + ".csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     const getStatusColor = (status) => {
         switch (status) {
@@ -35,7 +131,9 @@ const CommissionsPage = () => {
                     <p className="text-gray-500 mt-1">Immutable financial records and adjustments.</p>
                 </div>
                 <div className="flex gap-3">
-                    <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
+                    <button
+                        onClick={handleExport}
+                        className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2">
                         <Download size={18} />
                         Export Statement
                     </button>
@@ -88,20 +186,20 @@ const CommissionsPage = () => {
                             <th className="px-6 py-4">Type</th>
                             <th className="px-6 py-4 text-right">Amount</th>
                             <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4 text-right">Running Bal.</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-sm">
                         {ledgerEntries.map((entry) => (
                             <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-6 py-4 font-mono text-gray-500 text-xs">{entry.id}</td>
-                                <td className="px-6 py-4 text-gray-900">{entry.date}</td>
+                                <td className="px-6 py-4 font-mono text-gray-500 text-xs">{entry.id.substring(0, 10)}...</td>
+                                <td className="px-6 py-4 text-gray-900">{new Date(entry.date).toLocaleDateString()} {new Date(entry.date).toLocaleTimeString()}</td>
                                 <td className="px-6 py-4 font-medium text-gray-900">{entry.salesperson}</td>
                                 <td className="px-6 py-4 text-gray-600 max-w-xs truncate">{entry.desc}</td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold border ${entry.type === 'Commission' ? 'bg-teal-50 text-teal-700 border-teal-100' :
-                                            entry.type === 'Payout' ? 'bg-gray-50 text-gray-700 border-gray-200' :
-                                                entry.type === 'Reversal' ? 'bg-red-50 text-red-700 border-red-100' :
+                                        entry.type === 'Payout' ? 'bg-gray-50 text-gray-700 border-gray-200' :
+                                            entry.type === 'Adjustment' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                                entry.type === 'Fee' ? 'bg-red-50 text-red-700 border-red-100' :
                                                     'bg-purple-50 text-purple-700 border-purple-100' // Bonus
                                         }`}>
                                         {entry.type}
@@ -115,16 +213,13 @@ const CommissionsPage = () => {
                                         {entry.status}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 text-right text-gray-500 font-medium">
-                                    ${entry.balance.toFixed(2)}
-                                </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
 
-            {/* Adjustment Modal (Mockup) */}
+            {/* Adjustment Modal */}
             {showAdjustmentModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in-95 duration-200">
@@ -136,7 +231,11 @@ const CommissionsPage = () => {
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Entry Type</label>
-                                <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 outline-none">
+                                <select
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 outline-none"
+                                    value={formData.type}
+                                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                                >
                                     <option>Adjustment (Credit)</option>
                                     <option>Adjustment (Debit)</option>
                                     <option>Bonus</option>
@@ -145,19 +244,36 @@ const CommissionsPage = () => {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Salesperson</label>
-                                <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 outline-none">
-                                    <option>Select Salesperson...</option>
-                                    <option>Alex Morgan</option>
-                                    <option>Sarah Jay</option>
+                                <select
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 outline-none"
+                                    value={formData.salespersonId}
+                                    onChange={(e) => setFormData({ ...formData, salespersonId: e.target.value })}
+                                >
+                                    <option value="">Select Salesperson...</option>
+                                    {salespeople.map(s => (
+                                        <option key={s._id} value={s._id}>{s.name} ({s.email})</option>
+                                    ))}
                                 </select>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount ($)</label>
-                                <input type="number" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 outline-none" placeholder="0.00" />
+                                <input
+                                    type="number"
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 outline-none"
+                                    placeholder="0.00"
+                                    value={formData.amount}
+                                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                                />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Reason / Description</label>
-                                <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 outline-none" rows="3" placeholder="e.g. Q4 Regional Sales Winner"></textarea>
+                                <textarea
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 outline-none"
+                                    rows="3"
+                                    placeholder="e.g. Q4 Regional Sales Winner"
+                                    value={formData.description}
+                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                ></textarea>
                             </div>
                             <div className="bg-amber-50 p-3 rounded-lg text-sm text-amber-800 border border-amber-100 flex gap-2">
                                 <FileText size={16} className="mt-0.5 flex-shrink-0" />
@@ -169,7 +285,7 @@ const CommissionsPage = () => {
 
                         <div className="flex justify-end gap-3 mt-8">
                             <button onClick={() => setShowAdjustmentModal(false)} className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
-                            <button className="px-4 py-2 bg-teal-600 text-white font-bold rounded-lg hover:bg-teal-700">Create Entry</button>
+                            <button onClick={handleCreateEntry} className="px-4 py-2 bg-teal-600 text-white font-bold rounded-lg hover:bg-teal-700">Create Entry</button>
                         </div>
                     </div>
                 </div>

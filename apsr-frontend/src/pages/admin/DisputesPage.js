@@ -1,16 +1,64 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import axios from 'axios';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { AlertCircle, MessageCircle, FileText, CheckCircle, XCircle, Clock, Paperclip } from 'lucide-react';
+import { useSocket } from '../../context/SocketContext';
 
 const DisputesPage = () => {
+    const socket = useSocket();
     const [selectedTicket, setSelectedTicket] = useState(null);
+    const [tickets, setTickets] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // Mock Data
-    const tickets = [
-        { id: 'TKT-2001', subject: 'Missing Commission for Order #7723', salesperson: 'Alex Morgan', status: 'Open', priority: 'High', date: '2 hrs ago', evidence: 'screenshot_proof.png' },
-        { id: 'TKT-2002', subject: 'Incorrect Commission Rate Applied', salesperson: 'Sarah Jay', status: 'In Review', priority: 'Medium', date: '5 hrs ago', evidence: null },
-        { id: 'TKT-1998', subject: 'Payout Batch #202 Not Received', salesperson: 'Mike Ross', status: 'Resolved', priority: 'High', date: 'Yesterday', evidence: 'bank_statement.pdf' },
-    ];
+    useEffect(() => {
+        fetchTickets();
+
+        if (socket) {
+            socket.on('dispute_created', (newTicket) => {
+                setTickets(prev => [newTicket, ...prev]);
+            });
+            socket.on('dispute_updated', (updatedTicket) => {
+                setTickets(prev => prev.map(t => t._id === updatedTicket._id ? updatedTicket : t));
+                if (selectedTicket?._id === updatedTicket._id) {
+                    setSelectedTicket(updatedTicket);
+                }
+            });
+        }
+
+        return () => {
+            if (socket) {
+                socket.off('dispute_created');
+                socket.off('dispute_updated');
+            }
+        };
+    }, [socket, selectedTicket]);
+
+    const fetchTickets = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await axios.get('http://localhost:5001/api/disputes', {
+                headers: { 'x-auth-token': token }
+            });
+            setTickets(res.data);
+        } catch (err) {
+            console.error('Error fetching disputes:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateStatus = async (id, status) => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await axios.put(`http://localhost:5001/api/disputes/${id}`,
+                { status },
+                { headers: { 'x-auth-token': token } }
+            );
+            // State update handled by socket event
+        } catch (err) {
+            alert('Failed to update status');
+        }
+    };
 
     const getPriorityColor = (p) => {
         if (p === 'High') return 'text-red-600 bg-red-50 border-red-200';
@@ -21,6 +69,7 @@ const DisputesPage = () => {
     const getStatusColor = (s) => {
         if (s === 'Open') return 'bg-green-100 text-green-800';
         if (s === 'In Review') return 'bg-purple-100 text-purple-800';
+        if (s === 'Resolved') return 'bg-blue-100 text-blue-800';
         return 'bg-gray-100 text-gray-800';
     };
 
@@ -31,13 +80,6 @@ const DisputesPage = () => {
                     <h1 className="text-2xl font-bold text-gray-900">Disputes & Support</h1>
                     <p className="text-gray-500 mt-1">Resolution center for commission claims.</p>
                 </div>
-                <div className="flex gap-3">
-                    <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-teal-500 outline-none">
-                        <option>All Statuses</option>
-                        <option>Open</option>
-                        <option>Resolved</option>
-                    </select>
-                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-180px)]">
@@ -45,25 +87,31 @@ const DisputesPage = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
                     <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                         <h3 className="font-bold text-gray-700">Ticket Queue</h3>
-                        <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">2 Open</span>
+                        <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                            {tickets.filter(t => t.status === 'Open').length} Open
+                        </span>
                     </div>
                     <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
-                        {tickets.map(ticket => (
+                        {tickets.length === 0 ? (
+                            <p className="p-4 text-center text-gray-400 text-sm">No tickets found.</p>
+                        ) : tickets.map(ticket => (
                             <div
-                                key={ticket.id}
+                                key={ticket._id}
                                 onClick={() => setSelectedTicket(ticket)}
-                                className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${selectedTicket?.id === ticket.id ? 'bg-teal-50 border-l-4 border-teal-500' : ''}`}
+                                className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${selectedTicket?._id === ticket._id ? 'bg-teal-50 border-l-4 border-teal-500' : ''}`}
                             >
                                 <div className="flex justify-between mb-1">
                                     <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${getPriorityColor(ticket.priority)}`}>
                                         {ticket.priority}
                                     </span>
-                                    <span className="text-xs text-gray-400">{ticket.date}</span>
+                                    <span className="text-xs text-gray-400">
+                                        {new Date(ticket.createdAt).toLocaleDateString()}
+                                    </span>
                                 </div>
-                                <h4 className="font-bold text-sm text-gray-900 mb-1">{ticket.subject}</h4>
-                                <p className="text-xs text-gray-500">{ticket.salesperson}</p>
+                                <h4 className="font-bold text-sm text-gray-900 mb-1 line-clamp-1">{ticket.subject}</h4>
+                                <p className="text-xs text-gray-500">{ticket.salesperson?.name || 'Unknown User'}</p>
                                 <div className="mt-2 text-xs font-medium text-gray-400 flex items-center gap-1">
-                                    <MessageCircle size={12} /> {ticket.id}
+                                    <MessageCircle size={12} /> {ticket._id.substring(ticket._id.length - 6)}
                                 </div>
                             </div>
                         ))}
@@ -83,8 +131,8 @@ const DisputesPage = () => {
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-4 text-sm text-gray-500">
-                                        <span className="flex items-center gap-1"><AlertCircle size={14} /> Ticket #{selectedTicket.id}</span>
-                                        <span className="flex items-center gap-1"><Clock size={14} /> SLA: 4 hours left</span>
+                                        <span className="flex items-center gap-1"><AlertCircle size={14} /> ID: {selectedTicket._id}</span>
+                                        <span className="flex items-center gap-1"><Clock size={14} /> Created: {new Date(selectedTicket.createdAt).toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>
@@ -92,43 +140,42 @@ const DisputesPage = () => {
                             <div className="flex-1 p-6 overflow-y-auto">
                                 <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 mb-6">
                                     <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Issue Description</h4>
-                                    <p className="text-sm text-gray-800">
-                                        I referred a customer (Customer ID: 9928) yesterday who purchased the Enterprise plan, but the commission is not showing in my dashboard. Please investigate.
+                                    <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                                        {selectedTicket.description}
                                     </p>
-                                    {selectedTicket.evidence && (
-                                        <div className="mt-3 flex items-center gap-2 text-sm text-teal-600 font-medium cursor-pointer hover:underline">
-                                            <Paperclip size={16} />
-                                            {selectedTicket.evidence} (Click to preview)
-                                        </div>
-                                    )}
                                 </div>
 
-                                {/* Activity Log (Mock) */}
-                                <div className="space-y-6">
+                                {/* Activity Log (Mock for Response) */}
+                                {selectedTicket.adminResponse && (
                                     <div className="flex gap-4">
-                                        <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-xs">SM</div>
+                                        <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-xs">AD</div>
                                         <div>
                                             <div className="bg-white border border-gray-200 p-3 rounded-lg rounded-tl-none shadow-sm text-sm">
-                                                I've checked the logs. The attribution cookie seems to have been blocked by the user's browser privacy settings.
+                                                {selectedTicket.adminResponse}
                                             </div>
-                                            <span className="text-xs text-gray-400 mt-1 block">Support Agent • 10:30 AM</span>
+                                            <span className="text-xs text-gray-400 mt-1 block">Admin Response</span>
                                         </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
 
                             {/* Action Footer */}
-                            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
-                                <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 font-medium text-sm">
-                                    Reply
-                                </button>
-                                <button className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm flex items-center gap-2">
-                                    <XCircle size={16} /> Reject Claim
-                                </button>
-                                <button className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium text-sm flex items-center gap-2 shadow-sm">
-                                    <CheckCircle size={16} /> Approve & Credit
-                                </button>
-                            </div>
+                            {selectedTicket.status !== 'Resolved' && selectedTicket.status !== 'Rejected' && (
+                                <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                                    <button
+                                        onClick={() => handleUpdateStatus(selectedTicket._id, 'Rejected')}
+                                        className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm flex items-center gap-2"
+                                    >
+                                        <XCircle size={16} /> Reject Claim
+                                    </button>
+                                    <button
+                                        onClick={() => handleUpdateStatus(selectedTicket._id, 'Resolved')}
+                                        className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium text-sm flex items-center gap-2 shadow-sm"
+                                    >
+                                        <CheckCircle size={16} /> Resolve & Close
+                                    </button>
+                                </div>
+                            )}
                         </>
                     ) : (
                         <div className="h-full flex flex-col items-center justify-center text-gray-400">

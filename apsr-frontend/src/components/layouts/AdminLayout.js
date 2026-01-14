@@ -4,6 +4,7 @@ import {
     LayoutDashboard,
     ShoppingCart,
     Users,
+    CheckCircle,
     CreditCard,
     BarChart2,
     Settings,
@@ -30,12 +31,14 @@ const AdminLayout = ({ children }) => {
     const navItems = [
         { label: 'Dashboard', path: '/admin', icon: LayoutDashboard },
         { label: 'Orders', path: '/admin/orders', icon: ShoppingCart },
+        { label: 'Payment Approvals', path: '/admin/approvals', icon: CheckCircle },
         { label: 'Attribution', path: '/attribution', icon: BarChart2 }, // Kept existing route for now
         { label: 'Commissions', path: '/admin/commissions', icon: CreditCard },
         { label: 'Payouts', path: '/admin/payouts', icon: Box },
         { label: 'Salespeople', path: '/admin/salespeople', icon: Users },
         { label: 'Products', path: '/admin/products', icon: Box },
         { label: 'Channels', path: '/admin/channels', icon: MessageSquare },
+        { label: 'Bot Manager', path: '/admin/bot', icon: MessageSquare },
         { label: 'Disputes', path: '/admin/disputes', icon: AlertOctagon },
         { label: 'Audit Logs', path: '/admin/audit', icon: FileText },
         { label: 'Settings', path: '/admin/settings', icon: Settings },

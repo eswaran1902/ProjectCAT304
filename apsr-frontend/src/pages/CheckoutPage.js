@@ -4,6 +4,7 @@ import AuthContext from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { CreditCard, Truck, CheckCircle } from 'lucide-react';
+import qrPaymentImg from '../assets/qr_payment.jpg';
 
 const CheckoutPage = () => {
     const { cartItems, getCartTotal, clearCart } = useCart();
@@ -19,6 +20,11 @@ const CheckoutPage = () => {
         country: 'Malaysia'
     });
 
+    const [referralCode, setReferralCode] = useState(localStorage.getItem('referralCode') || '');
+
+    const [paymentMethod, setPaymentMethod] = useState('qr_pay');
+    const [receiptFile, setReceiptFile] = useState(null);
+
     const total = getCartTotal();
 
     // Redirect if cart empty or not logged in
@@ -32,48 +38,46 @@ const CheckoutPage = () => {
     };
 
     const handlePlaceOrder = async () => {
+        if (!referralCode.trim()) {
+            alert("Referral Code is required to complete the purchase.");
+            return;
+        }
+
+        if (paymentMethod === 'qr_pay' && !receiptFile) {
+            alert("Please upload your payment receipt.");
+            return;
+        }
+
         setLoading(true);
         try {
-            // Mock API Call
-            // Note: In a real app we would get buyerId from the token in the backend from the request, 
-            // but for this MVP orders route expects buyerId in body if we didn't update it to use auth middleware yet.
-            // Let's assume we need to pass a buyerId. Since we don't have the user ID easily accessible in the frontend `user` object 
-            // (User object in AuthContext usually just has name/role/token in this implementation, let's check),
-            // we might need to rely on the backend decoding the token. 
-            // However, the current backend /api/orders route reads `buyerId` from body.
-            // I'll check AuthContext again. It stores { role, name }. It DOES NOT store ID.
-            // This is a gap. I should probably decode the token or fetch /me.
-            // For now, I will simulate it or assume the backend can handle it if I pass a placeholder or if I update backend to use req.user.id.
-            // Actually, I'll pass a dummy ID or "guest" if I can't get it, BUT `Order` model requires buyer ID.
-            // Let's check Login.js to see what it stores. It stores `token`, `role`, `name`.
-            // I should update Login to store ID too.
-            // OR I can blindly trust the backend to use the token if I add middleware.
-            // The EASIEST fix right now without refactoring everything is:
-            // 1. Update AuthContext/Login to store `_id`.
-            // 2. Pass it here.
+            // Mock API Call preparation
+            const buyerId = localStorage.getItem('userId');
 
-            // Let's assume I will fix AuthContext in a moment.
-            const buyerId = localStorage.getItem('userId'); // I'll add this to Login/Register response handling.
+            // Construct FormData for upload
+            const formDataPayload = new FormData();
+            // Use a valid 24-char hex string for fallback to avoid CastError if userId is missing
+            formDataPayload.append('buyerId', buyerId || '650d3f8e9a2b5c7d1e8f9a2b');
+            formDataPayload.append('items', JSON.stringify(cartItems.map(item => ({
+                productId: item._id,
+                quantity: item.quantity
+            })))); // Stringify for FormData
+            formDataPayload.append('shippingAddress', JSON.stringify(formData));
+            formDataPayload.append('paymentMethod', paymentMethod);
+            formDataPayload.append('referralCode', referralCode);
 
-            const orderData = {
-                buyerId: buyerId || '650d...placeholder', // Fallback for safety to prevent crash, but strictly should be real.
-                items: cartItems.map(item => ({
-                    productId: item._id,
-                    quantity: item.quantity
-                })),
-                shippingAddress: formData,
-                paymentMethod: 'credit_card',
-                // salespersonId: ... (We need to track this context from the marketplace link?) 
-                // For now, I'll omit salespersonId unless we added referral logic.
-            };
+            if (receiptFile) {
+                formDataPayload.append('receipt', receiptFile);
+            }
 
-            await axios.post('http://localhost:5001/api/orders', orderData);
+            // Let browser set Content-Type with boundary for FormData
+            await axios.post('http://localhost:5001/api/orders', formDataPayload);
 
             clearCart();
             setStep('success');
         } catch (err) {
             console.error(err);
-            alert('Failed to place order. Please try again.');
+            const errorMsg = err.response?.data?.msg || err.response?.data || err.message;
+            alert(`Failed to place order: ${errorMsg}`);
         } finally {
             setLoading(false);
         }
@@ -87,7 +91,11 @@ const CheckoutPage = () => {
                         <CheckCircle size={48} />
                     </div>
                     <h2 className="text-3xl font-bold text-gray-900 mb-2">Order Placed!</h2>
-                    <p className="text-gray-500 mb-8">Thank you for your purchase. We have received your order.</p>
+                    <p className="text-gray-500 mb-8">
+                        {paymentMethod === 'qr_pay'
+                            ? "Your receipt has been uploaded and is pending admin approval."
+                            : "Thank you for your purchase. We have received your order."}
+                    </p>
                     <button
                         onClick={() => navigate('/marketplace')}
                         className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-black transition-colors"
@@ -114,7 +122,7 @@ const CheckoutPage = () => {
                         </button>
                         <button
                             className={`flex-1 py-4 font-bold text-sm ${step === 'payment' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400'}`}
-                            onClick={() => step === 'payment' && setStep('payment')} // Only clickable if active or passed (logic simplified)
+                            onClick={() => step === 'payment' && setStep('payment')}
                         >
                             2. Payment
                         </button>
@@ -127,6 +135,7 @@ const CheckoutPage = () => {
                                     <Truck size={20} className="text-indigo-600" />
                                     Shipping Details
                                 </h3>
+                                {/* ... existing shipping form ... */}
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Street Address</label>
                                     <input type="text" name="address" value={formData.address} onChange={handleChange} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="123 Main St" />
@@ -154,13 +163,48 @@ const CheckoutPage = () => {
                                     <CreditCard size={20} className="text-indigo-600" />
                                     Payment Details
                                 </h3>
-                                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 mb-4 text-sm text-gray-500">
-                                    This is a mock checkout. No valid card details required.
+
+                                <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
+                                    <div className="bg-white border-2 border-dashed border-gray-200 rounded-xl p-6 text-center">
+                                        <div className="flex justify-center mb-4">
+                                            <img
+                                                src={qrPaymentImg}
+                                                alt="QR Payment"
+                                                className="w-64 h-auto rounded-lg shadow-md"
+                                            />
+                                        </div>
+                                        <p className="font-bold text-gray-900">Scan to Pay: RM {total.toFixed(2)}</p>
+                                        <p className="text-sm text-gray-500">Recipient: APSR System</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">Upload Receipt (Required)</label>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => setReceiptFile(e.target.files[0])}
+                                            className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                        />
+                                    </div>
+
+                                    <div className="p-4 bg-blue-50 text-blue-700 rounded-xl text-sm flex items-center gap-2">
+                                        <CheckCircle size={16} />
+                                        <span>Only QR Payment (DuitNow) is available at this time.</span>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Card Number (Mock)</label>
-                                    <input type="text" disabled value="4242 4242 4242 4242" className="w-full px-4 py-3 rounded-lg border border-gray-200 bg-gray-100 text-gray-500" />
+
+                                <div className="mt-4">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Referral Code (Required)</label>
+                                    <input
+                                        type="text"
+                                        value={referralCode}
+                                        onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                                        placeholder="Enter Salesperson Code"
+                                        className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Please enter the referral code of the salesperson who referred you.</p>
                                 </div>
+
                                 <div className="flex justify-between items-center py-4 border-t border-gray-100 mt-4">
                                     <span className="font-bold text-gray-900">Total to Pay</span>
                                     <span className="text-2xl font-bold text-indigo-600">RM {total.toFixed(2)}</span>
@@ -171,7 +215,7 @@ const CheckoutPage = () => {
                                     disabled={loading}
                                     className="w-full bg-green-600 text-white font-bold py-4 rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-200 flex items-center justify-center"
                                 >
-                                    {loading ? 'Processing...' : `Pay RM ${total.toFixed(2)}`}
+                                    {loading ? 'Processing...' : (paymentMethod === 'qr_pay' ? 'Submit Receipt' : `Pay RM ${total.toFixed(2)}`)}
                                 </button>
                                 <button
                                     onClick={() => setStep('shipping')}

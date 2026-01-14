@@ -1,38 +1,72 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { Search, Filter, ChevronDown, CheckCircle, AlertCircle, Clock, X, Eye, Phone, Globe, MessageSquare } from 'lucide-react';
+import axios from 'axios';
+import AuthContext from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 
 const OrdersPage = () => {
+    const { token } = useContext(AuthContext);
+    const socket = useSocket();
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [filterStatus, setFilterStatus] = useState('All');
+    const [orders, setOrders] = useState([]);
 
-    // Mock Data
-    const orders = [
-        { id: 'ORD-7721', date: '2024-10-24 10:42 AM', customer: 'Siti Aminah', channel: 'WhatsApp', salesperson: 'Ahmad Rozali', amount: 450.00, status: 'Paid', risk: 12, attribution: 'Link Click' },
-        { id: 'ORD-7722', date: '2024-10-24 11:15 AM', customer: 'Aiman Hakim', channel: 'Telegram', salesperson: 'Sarah K.', amount: 2100.00, status: 'Flagged', risk: 85, attribution: 'QR Scan' },
-        { id: 'ORD-7723', date: '2024-10-24 01:20 PM', customer: 'Norazlina', channel: 'Direct', salesperson: '-', amount: 120.00, status: 'Pending', risk: 5, attribution: 'Organic' },
-        { id: 'ORD-7724', date: '2024-10-24 02:45 PM', customer: 'Farid Kamil', channel: 'Marketplace', salesperson: 'Ahmad Rozali', amount: 330.00, status: 'Paid', risk: 22, attribution: 'Link Click' },
-        { id: 'ORD-7725', date: '2024-10-24 03:10 PM', customer: 'Zul Ariffin', channel: 'WhatsApp', salesperson: 'Mike D.', amount: 890.00, status: 'Paid', risk: 8, attribution: 'Link Click' },
-    ];
+    const fetchOrders = async () => {
+        try {
+            const res = await axios.get('http://localhost:5001/api/orders', {
+                headers: { 'x-auth-token': token }
+            });
+            setOrders(res.data);
+        } catch (err) {
+            console.error("Error fetching orders:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (token) fetchOrders();
+    }, [token]);
+
+    // Real-time listener
+    useEffect(() => {
+        if (!socket) return;
+        const handleUpdate = () => {
+            console.log("Real-time update: Orders list refreshed");
+            fetchOrders();
+        };
+
+        socket.on('order_created', handleUpdate);
+        socket.on('order_updated', handleUpdate);
+
+        return () => {
+            socket.off('order_created', handleUpdate);
+            socket.off('order_updated', handleUpdate);
+        };
+    }, [socket, token]);
 
     const getStatusColor = (status) => {
         switch (status) {
-            case 'Paid': return 'bg-green-100 text-green-800';
-            case 'Pending': return 'bg-yellow-100 text-yellow-800';
-            case 'Flagged': return 'bg-red-100 text-red-800';
+            case 'paid': return 'bg-green-100 text-green-800';
+            case 'pending': return 'bg-yellow-100 text-yellow-800';
+            case 'pending_approval': return 'bg-orange-100 text-orange-800';
+            case 'flagged': return 'bg-red-100 text-red-800';
             default: return 'bg-gray-100 text-gray-800';
         }
     };
 
 
     const getChannelIcon = (channel) => {
-        switch (channel) {
-            case 'WhatsApp': return <Phone size={16} className="text-green-600" />;
-            case 'Telegram': return <MessageSquare size={16} className="text-blue-500" />;
-            case 'Marketplace': return <Globe size={16} className="text-purple-600" />;
-            default: return <Globe size={16} className="text-gray-400" />;
-        }
+        // Map backend payment/channel to icon
+        // Currently backend stores paymentMethod, not explicit 'channel' like WhatsApp unless custom field
+        // For now, we defaults to 'Globe' unless we infer from something else or add 'source' field to Order
+        // Let's assume 'manual' or 'link' from Transactions logic could be here if we fetched transactions
+        // For now, simple mapping:
+        return <Globe size={16} className="text-purple-600" />;
     };
+
+    const filteredOrders = filterStatus === 'All'
+        ? orders
+        : orders.filter(o => o.status?.toLowerCase() === filterStatus.toLowerCase() || (filterStatus === 'Pending' && o.status === 'pending_approval'));
 
     return (
         <AdminLayout>
@@ -81,25 +115,25 @@ const OrdersPage = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-sm">
-                        {orders.map((order) => (
-                            <tr key={order.id} className="hover:bg-gray-50/80 transition-colors">
-                                <td className="px-6 py-4 font-mono font-medium text-teal-600">{order.id}</td>
-                                <td className="px-6 py-4 text-gray-500">{order.date}</td>
-                                <td className="px-6 py-4 font-medium text-gray-900">{order.customer}</td>
+                        {filteredOrders.map((order) => (
+                            <tr key={order._id} className="hover:bg-gray-50/80 transition-colors">
+                                <td className="px-6 py-4 font-mono font-medium text-teal-600">{order._id.substring(0, 8)}...</td>
+                                <td className="px-6 py-4 text-gray-500">{new Date(order.createdAt).toLocaleString()}</td>
+                                <td className="px-6 py-4 font-medium text-gray-900">{order.buyer?.name || 'Guest'}</td>
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-2">
-                                        {getChannelIcon(order.channel)}
-                                        <span>{order.channel}</span>
+                                        {getChannelIcon(order.paymentMethod)}
+                                        <span>{order.paymentMethod === 'qr_pay' ? 'QR Pay' : 'Stripe'}</span>
                                     </div>
                                 </td>
-                                <td className="px-6 py-4">{order.salesperson}</td>
+                                <td className="px-6 py-4">{order.salesperson?.name || '-'}</td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                                        {order.status === 'Flagged' && <AlertCircle size={12} className="mr-1" />}
+                                        {order.status === 'flagged' && <AlertCircle size={12} className="mr-1" />}
                                         {order.status}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 font-bold text-gray-900">RM {order.amount.toFixed(2)}</td>
+                                <td className="px-6 py-4 font-bold text-gray-900">RM {order.totalAmount?.toFixed(2)}</td>
                                 <td className="px-6 py-4">
                                     <button
                                         onClick={() => setSelectedOrder(order)}
